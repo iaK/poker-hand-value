@@ -15,6 +15,23 @@ defmodule PokerHandValue do
 
   """
 
+  import List, only: [first: 1, last: 1]
+  import Map, only: [values: 1]
+
+  import Enum,
+    only: [
+      map: 2,
+      filter: 2,
+      sort: 1,
+      take: 2,
+      sort_by: 2,
+      group_by: 2,
+      reverse: 1,
+      uniq_by: 2,
+      member?: 2,
+      reduce: 2
+    ]
+
   @doc """
   Compares two hands. returns :gt if the value of the first hand is greater, :lt if lesses and :eq if they have same value
 
@@ -36,10 +53,13 @@ defmodule PokerHandValue do
     do: compare_hands(first, rate_hand(second))
 
   def compare_hands(first, second) do
+    {_, first} = first
+    {_, second} = second
+
     cond do
-      elem(first, 1) > elem(second, 1) -> :gt
-      elem(second, 1) > elem(first, 1) -> :lt
-      elem(first, 1) === elem(second, 1) -> :eq
+      first > second -> :gt
+      second > first -> :lt
+      first === second -> :eq
     end
   end
 
@@ -89,9 +109,9 @@ defmodule PokerHandValue do
   def match_high_card(hand) do
     hand
     |> remove_suits
-    |> Enum.sort()
-    |> Enum.reverse()
-    |> Enum.take(5)
+    |> sort()
+    |> reverse()
+    |> take(5)
     |> count_score(:high_card)
   end
 
@@ -121,7 +141,7 @@ defmodule PokerHandValue do
 
     cond do
       pair != nil ->
-        count_score([pair | remove_cards_from_hand(hand, pair) |> Enum.take(3)], :pair)
+        count_score([pair | remove_cards_from_hand(hand, pair) |> take(3)], :pair)
 
       true ->
         nil
@@ -157,7 +177,7 @@ defmodule PokerHandValue do
 
     cond do
       pair != nil && second_pair != nil ->
-        count_score([pair, second_pair] ++ [List.first(hand)], :two_pair)
+        count_score([pair, second_pair] ++ [first(hand)], :two_pair)
 
       true ->
         nil
@@ -193,7 +213,7 @@ defmodule PokerHandValue do
     cond do
       three_of_a_kind != nil ->
         count_score(
-          [three_of_a_kind | remove_cards_from_hand(hand, three_of_a_kind) |> Enum.take(2)],
+          [three_of_a_kind | remove_cards_from_hand(hand, three_of_a_kind) |> take(2)],
           :three_of_a_kind
         )
 
@@ -231,14 +251,13 @@ defmodule PokerHandValue do
 
     straight_from =
       hand
-      |> Enum.sort()
-      |> Stream.take(length(hand) - 4)
-      |> Stream.filter(&is_straight_from_number!(&1, hand))
-      |> Enum.to_list()
+      |> sort()
+      |> take(length(hand) - 4)
+      |> filter(&is_straight_from_number!(&1, hand))
 
     cond do
       length(straight_from) > 0 ->
-        count_score([List.first(straight_from) + 4], :straight)
+        count_score([first(straight_from) + 4], :straight)
 
       true ->
         nil
@@ -265,16 +284,16 @@ defmodule PokerHandValue do
   def match_flush(hand) do
     flush =
       hand
-      |> Enum.sort_by(fn card -> elem(card, 1) end)
-      |> Enum.group_by(fn card -> elem(card, 0) end)
-      |> Map.values()
-      |> Enum.filter(fn suit -> length(suit) >= 5 end)
-      |> List.last()
+      |> sort_by(fn card -> elem(card, 1) end)
+      |> group_by(fn card -> elem(card, 0) end)
+      |> values()
+      |> filter(fn suit -> length(suit) >= 5 end)
+      |> last()
 
     cond do
       flush != nil ->
         count_score(
-          flush |> remove_suits |> Enum.sort() |> Enum.reverse(),
+          flush |> remove_suits |> sort() |> reverse(),
           :flush
         )
 
@@ -334,7 +353,7 @@ defmodule PokerHandValue do
 
     cond do
       four_of_a_kind != nil ->
-        count_score([four_of_a_kind] ++ [List.first(hand)], :four_of_a_kind)
+        count_score([four_of_a_kind] ++ [first(hand)], :four_of_a_kind)
 
       true ->
         nil
@@ -358,17 +377,16 @@ defmodule PokerHandValue do
   def match_straight_flush(hand) do
     straight_flush =
       hand
-      |> Enum.uniq_by(fn card -> elem(card, 1) end)
-      |> Enum.group_by(fn card -> elem(card, 0) end)
-      |> Map.values()
-      |> Stream.filter(fn suit -> length(suit) >= 5 end)
-      |> Stream.map(&match_straight(&1))
-      |> Stream.filter(&(&1 != nil))
-      |> Enum.to_list()
+      |> uniq_by(fn card -> elem(card, 1) end)
+      |> group_by(fn card -> elem(card, 0) end)
+      |> values()
+      |> filter(fn suit -> length(suit) >= 5 end)
+      |> map(&match_straight(&1))
+      |> filter(&(&1 != nil))
 
     cond do
       length(straight_flush) > 0 ->
-        {:straight_flush, straight_flush |> List.first() |> elem(1)}
+        {:straight_flush, straight_flush |> first() |> elem(1)}
 
       true ->
         nil
@@ -389,13 +407,13 @@ defmodule PokerHandValue do
   def parse_hand(hand) do
     hand
     |> String.split()
-    |> Enum.map(fn card ->
+    |> map(fn card ->
       card_list = card |> String.split_at(-1)
 
       try do
         {
-          lookup(elem(card_list, 1) |> String.upcase()),
-          lookup(elem(card_list, 0) |> String.upcase())
+          lookup(card_list |> elem(1) |> String.upcase()),
+          lookup(card_list |> elem(0) |> String.upcase())
         }
       rescue
         _ -> raise "Unable to parse hand"
@@ -435,9 +453,8 @@ defmodule PokerHandValue do
 
   defp remove_suits(hand) do
     hand
-    |> Enum.map(&elem(&1, 1))
-    |> Enum.to_list()
-    |> Enum.sort()
+    |> map(&elem(&1, 1))
+    |> sort()
   end
 
   defp make_two_digit(digit) do
@@ -462,25 +479,23 @@ defmodule PokerHandValue do
   defp get_highest(hand, amount) do
     pair =
       hand
-      |> Enum.group_by(& &1)
-      |> Map.values()
-      |> Enum.filter(&(length(&1) == amount))
-      |> Enum.to_list()
-      |> List.last()
+      |> group_by(& &1)
+      |> values()
+      |> filter(&(length(&1) == amount))
+      |> last()
 
     cond do
-      is_list(pair) -> List.first(pair)
+      is_list(pair) -> first(pair)
       true -> nil
     end
   end
 
   defp count_score(cards, value) do
     cards
-    |> Stream.take(5)
-    |> Stream.map(&Integer.to_string(&1))
-    |> Stream.map(&make_two_digit(&1))
-    |> Enum.to_list()
-    |> Enum.reduce(fn item, acc -> acc <> item end)
+    |> take(5)
+    |> map(&Integer.to_string(&1))
+    |> map(&make_two_digit(&1))
+    |> reduce(fn item, acc -> acc <> item end)
     |> make_fractional
     |> (fn score -> {value, score} end).()
   end
@@ -496,22 +511,21 @@ defmodule PokerHandValue do
 
   defp remove_cards_from_hand(hand, cards) do
     hand
-    |> Enum.filter(&(&1 != cards))
-    |> Enum.sort()
-    |> Enum.reverse()
+    |> filter(&(&1 != cards))
+    |> sort()
+    |> reverse()
   end
 
   defp prefix_one_if_contains_ace(hand) do
     cond do
-      Enum.member?(hand, 14) -> [1 | hand]
+      member?(hand, 14) -> [1 | hand]
       true -> hand
     end
   end
 
   defp make_straight_from(num) do
     num..(num + 4)
-    |> Enum.to_list()
-    |> Enum.reverse()
+    |> reverse()
   end
 
   defp get_hands do
