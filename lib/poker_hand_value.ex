@@ -501,8 +501,9 @@ defmodule PokerHandValue do
   end
 
   defp make_fractional(score) do
-    String.to_integer(score) /
-      String.to_integer(String.pad_trailing("1", String.length(score) + 1, "0"))
+    import String, only: [to_integer: 1, pad_trailing: 3]
+
+    to_integer(score) / to_integer(pad_trailing("1", String.length(score) + 1, "0"))
   end
 
   defp remove_cards_from_hand(hand, cards) when cards == nil do
